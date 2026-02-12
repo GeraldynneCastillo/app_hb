@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-
 function App() {
   const [usuarios, setUsuarios] = useState([])
   const [busqueda, setBusqueda] = useState('')
@@ -20,9 +19,6 @@ function App() {
       const response = await fetch(`http://127.0.0.1:8000/api/usuarios/?q=${nombre.trim()}`)
       const data = await response.json()
       
-      // FILTRO CORREGIDO: 
-      // 1. Verifica que el objeto exista.
-      // 2. Verifica que 'nombre' no sea nulo, no esté vacío y no sea el texto "[]".
       const listaLimpia = (data.trabajadores || []).filter(u => 
         u && 
         u.nombre && 
@@ -65,7 +61,6 @@ function App() {
           {usuarios.length > 0 ? (
             usuarios.map((u, i) => (
               <div key={i} className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:border-blue-300 transition-all">
-                {/* Validación adicional para campos individuales por si acaso */}
                 <p className="font-bold text-lg text-gray-800">
                   {u.nombre === "[]" ? "" : u.nombre} {u.apellido === "[]" ? "" : u.apellido}
                 </p>
@@ -75,6 +70,13 @@ function App() {
                 <p className="text-gray-500 text-sm mt-2">
                   {u.email === "[]" ? "Sin correo" : u.email}
                 </p>
+
+                {/* --- SECCIÓN PARA EL CUMPLEAÑOS --- */}
+                {u.cumpleanos && u.cumpleanos !== "" && (
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center gap-2 text-pink-600">
+                    <p className="text-sm font-medium">Cumpleaños: {u.cumpleanos}</p>
+                  </div>
+                )}
               </div>
             ))
           ) : (
