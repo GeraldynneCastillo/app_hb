@@ -2,7 +2,6 @@ from ldap3 import Server, Connection, SIMPLE, ALL
 from django.conf import settings
 from contextlib import contextmanager
 
-# El "Motor" de Conexión
 @contextmanager
 def get_ldap_connection():
     server = Server(
@@ -23,22 +22,24 @@ def get_ldap_connection():
         conn.unbind()
 
 def buscar_usuario(nombre_usuario="*"):
-    # 1. Filtro de Seguridad: Solo personas, usuarios y cuentas ACTIVAS
-    filtro_seguridad = "(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+    # 1. Filtro de Seguridad: Personas, Usuarios y Cuentas Activas
+    seguridad = "(&(objectCategory=person)(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
     
-    # 2. Filtro de Nombre: Busca en ID de usuario, nombre o apellido
+    # 2. Filtro de Identidad: Solo gente con correo @cmf.cl y que tengan un Cargo definido
+    # Esto es mucho más efectivo que excluir OUs manuales
+    identidad_cmf = "(&(mail=*@cmf.cl)(title=*))"
+    
+    # 3. Filtro de búsqueda por nombre
     if nombre_usuario == "*" or not nombre_usuario:
-        filtro_nombre = "(sAMAccountName=*)"
+        nombre_f = "(sAMAccountName=*)"
     else:
-        # Usamos | (OR) para buscar en múltiples campos
-        filtro_nombre = f"(|(sAMAccountName=*{nombre_usuario}*)(givenName=*{nombre_usuario}*)(sn=*{nombre_usuario}*))"
+        nombre_f = f"(|(sAMAccountName=*{nombre_usuario}*)(givenName=*{nombre_usuario}*)(sn=*{nombre_usuario}*))"
     
-    # 3. Filtro de Limpieza y Exclusión de Externos
-    filtro_limpieza = "(&(givenName=*)(sn=*))"
-    filtro_excluir_externos = "(!(distinguishedName=*OU=Externos*))"
+    # 4. Filtro de limpieza (evitar nulos)
+    limpieza = "(&(givenName=*)(sn=*))"
 
-    # Construcción final del filtro
-    filtro_final = f"(&{filtro_seguridad}{filtro_nombre}{filtro_limpieza}{filtro_excluir_externos})"
+    # CONSTRUCCIÓN FINAL: Todo debe cumplirse (operador &)
+    filtro_final = f"(&{seguridad}{identidad_cmf}{nombre_f}{limpieza})"
 
     with get_ldap_connection() as conn:
         conn.search(
@@ -50,8 +51,8 @@ def buscar_usuario(nombre_usuario="*"):
         
         resultados = []
         for e in conn.entries:
-            # Función interna para extraer el valor real sin corchetes []
             def obtener_valor(atributo):
+                # Extraemos el valor real evitando los corchetes []
                 if atributo in e and len(e[atributo].values) > 0:
                     return str(e[atributo].values[0])
                 return ""
