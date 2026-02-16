@@ -119,12 +119,10 @@ function App() {
       busqueda.trim() === '' ||
       (usuario.nombre && usuario.nombre.toLowerCase().includes(busqueda.toLowerCase())) ||
       (usuario.apellido && usuario.apellido.toLowerCase().includes(busqueda.toLowerCase())) ||
-      (usuario.jefatura && usuario.jefatura.toLowerCase().includes(busqueda.toLowerCase())) ||
-      (usuario.gerencia && usuario.gerencia.toLowerCase().includes(busqueda.toLowerCase()));
-
+      (usuario.jefe_directo?.nombre_completo && usuario.jefe_directo.nombre_completo.toLowerCase().includes(busqueda.toLowerCase())) ||
+      (usuario.gerencia_info?.nombre && usuario.gerencia_info.nombre.toLowerCase().includes(busqueda.toLowerCase()));
     // Filtro por mes
     const matchesMonth = !filterMonth || getMonthFromDate(usuario.cumpleanos)?.toString() === filterMonth;
-
     // Filtro por estado activo/inactivo
     const matchesStatus = 
       filterStatus === 'todos' || 
