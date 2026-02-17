@@ -2,27 +2,43 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.conf import settings
+from django.db.models import Q
+from .models import Trabajador 
+# 1. CORREGIDO: Importamos desde .serializer (nombre de tu archivo)
+# y traemos la clase TrabajadorSerializer (nombre de la clase)
+from .serializer import TrabajadorSerializer 
 from .ldap_helpers import buscar_usuario
-from email.mime.base import MIMEBase  # Cambiado para soportar GIF animado
-from email import encoders           # Necesario para codificar el GIF
+from email.mime.base import MIMEBase
+from email import encoders
 import os
 
 @api_view(['GET'])
 def lista_trabajadores(request):
     """
-    Vista que conecta al LDAP para obtener trabajadores.
+    Vista que obtiene trabajadores usando el Serializador para incluir 
+    Jefatura (nombre limpio), Cargo y Gerencia.
     """
     query = request.GET.get('q', '').strip()
-    try:
-        termino_busqueda = query if query else "*"
-        lista_ldap = buscar_usuario(termino_busqueda)
-    except Exception as e:
-        print(f"Error con el LDAP: {e}")
-        lista_ldap = []
+    
+    # Buscamos en la base de datos local para aprovechar el Serializer estructurado
+    if query:
+        # Filtro potente: busca en nombre, apellido, cargo, nombre de gerencia o nombre de jefe
+        trabajadores = Trabajador.objects.filter(
+            Q(nombre__icontains=query) | 
+            Q(apellido__icontains=query) | 
+            Q(cargo__icontains=query) |
+            Q(departamento__nombre__icontains=query) |
+            Q(reporta_a__nombre__icontains=query)
+        )
+    else:
+        trabajadores = Trabajador.objects.all()
+
+    # 2. CORREGIDO: Usamos la clase 'TrabajadorSerializer' (singular), no 'TrabajadorSerializers'
+    serializer = TrabajadorSerializer(trabajadores, many=True)
 
     return Response({
-        'total': len(lista_ldap),
-        'trabajadores': lista_ldap
+        'total': trabajadores.count(),
+        'trabajadores': serializer.data
     })
 
 @api_view(['POST'])
@@ -37,8 +53,6 @@ def enviar_correos_seleccionados(request):
 
     asunto = "🎂 ¡Feliz Cumpleaños!"
     remitente = settings.EMAIL_HOST_USER
-    
-    # 1. Ruta al archivo GIF en tu carpeta static
     ruta_gif = os.path.join(settings.BASE_DIR, 'static', 'cumple_indef.gif')
 
     enviados = 0
@@ -53,7 +67,6 @@ def enviar_correos_seleccionados(request):
             nombre = usuario.get('nombre', 'Compañero/a')
             
             try:
-                # 2. HTML: El src="cid:gif_animado" debe coincidir con el ID de abajo
                 html_content = f"""
                 <html>
                     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; text-align: center;">
@@ -82,7 +95,6 @@ def enviar_correos_seleccionados(request):
                 msg.attach_alternative(html_content, "text/html")
                 msg.mixed_subtype = 'related'
 
-                # 3. Adjuntar el GIF usando MIMEBase para preservar la animación
                 if os.path.exists(ruta_gif):
                     with open(ruta_gif, 'rb') as f:
                         part = MIMEBase('image', 'gif')
@@ -91,9 +103,7 @@ def enviar_correos_seleccionados(request):
                         part.add_header('Content-ID', '<gif_animado>')
                         part.add_header('Content-Disposition', 'inline', filename='cumple_indef.gif')
                         msg.attach(part)
-                else:
-                    print(f"No se encontró el archivo en: {ruta_gif}")
-
+                
                 msg.send()
                 enviados += 1
 

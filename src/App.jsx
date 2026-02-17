@@ -6,8 +6,6 @@ function App() {
   const [busqueda, setBusqueda] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [cargando, setCargando] = useState(false);
-
-  // ESTADOS PARA SELECCIÓN: Ahora guardamos objetos { email, nombre }
   const [seleccionados, setSeleccionados] = useState([]);
   const [enviando, setEnviando] = useState(false);
 
@@ -21,11 +19,11 @@ function App() {
       const response = await fetch(`http://127.0.0.1:8000/api/usuarios/?q=${busqueda.trim()}`);
       const data = await response.json();
       
-      const listaLimpia = (data.trabajadores || []).filter(
-        u => u && u.nombre && u.nombre !== "" && u.nombre !== "[]" && u.nombre !== "No registrado"
-      ).map(u => ({
+      // Procesamos la lista. Usamos 'data.trabajadores' que viene de tu vista Django
+      const listaLimpia = (data.trabajadores || []).map(u => ({
           ...u,
-          userId: `${u.nombre}_${u.apellido}_${u.email}`
+          // Creamos un ID único seguro
+          userId: u.id || `${u.nombre}_${u.apellido}_${u.email}`
       }));
       
       setUsuarios(listaLimpia);
@@ -36,8 +34,6 @@ function App() {
     setCargando(false);
   };
 
-  // --- LÓGICA DE SELECCIÓN ---
-
   const toggleSeleccion = (usuario) => {
     const email = usuario.email;
     if (!email || email === "[]" || email === "Sin correo") return;
@@ -47,11 +43,7 @@ function App() {
       if (existe) {
         return prev.filter(u => u.email !== email);
       } else {
-        // Guardamos el objeto para que el backend sepa el nombre del cumpleañero
-        return [...prev, { 
-          email: email, 
-          nombre: usuario.nombre 
-        }];
+        return [...prev, { email: email, nombre: usuario.nombre }];
       }
     });
   };
@@ -80,15 +72,10 @@ function App() {
       const response = await fetch('http://127.0.0.1:8000/api/enviar-seleccionados/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Enviamos la clave "usuarios" que espera el backend
         body: JSON.stringify({ usuarios: seleccionados })
       });
       const data = await response.json();
       alert(data.mensaje);
-      
-      if (data.errores && data.errores.length > 0) {
-        console.error("Errores parciales:", data.errores);
-      }
       setSeleccionados([]); 
     } catch (error) {
       alert("Error al intentar enviar los correos.");
@@ -97,10 +84,9 @@ function App() {
     setEnviando(false);
   };
 
-  // --- FUNCIONES DE FECHAS ---
-
   const getMonthFromDate = (dateString) => {
     if (!dateString || dateString === "" || dateString === "[]") return null;
+    // Asume formato DD/MM (ej: 12/05)
     const parts = dateString.split('/');
     return parts.length >= 2 ? parseInt(parts[1], 10) : null;
   };
@@ -118,13 +104,17 @@ function App() {
     return Math.ceil((birthday - today) / (1000 * 60 * 60 * 24));
   };
 
-  // --- FILTROS ---
-
   const filteredUsuarios = usuarios.filter(usuario => {
+    // Lógica de búsqueda flexible
+    const searchLower = busqueda.toLowerCase();
+    
+    // Buscamos en nombre, apellido, cargo, gerencia y jefatura
     const matchesSearch = busqueda.trim() === '' ||
-      usuario.nombre?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      usuario.apellido?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      usuario.jefatura?.toLowerCase().includes(busqueda.toLowerCase());
+      (usuario.nombre && usuario.nombre.toLowerCase().includes(searchLower)) ||
+      (usuario.apellido && usuario.apellido.toLowerCase().includes(searchLower)) ||
+      (usuario.cargo && usuario.cargo.toLowerCase().includes(searchLower)) ||
+      (usuario.gerencia_info?.nombre && usuario.gerencia_info.nombre.toLowerCase().includes(searchLower)) ||
+      (usuario.jefe_directo?.nombre_completo && usuario.jefe_directo.nombre_completo.toLowerCase().includes(searchLower));
     
     const matchesMonth = !filterMonth || getMonthFromDate(usuario.cumpleanos)?.toString() === filterMonth;
     return matchesSearch && matchesMonth;
@@ -152,7 +142,6 @@ function App() {
               <p className="text-sm text-gray-600">Gestión de saludos corporativos</p>
             </div>
           </div>
-
           {seleccionados.length > 0 && (
             <button 
               onClick={enviarCorreos}
@@ -166,14 +155,14 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-[90%] mx-auto py-8">
+      <main className="max-w-[95%] mx-auto py-8">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200 flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Buscar empleado..."
+                placeholder="Buscar por nombre, cargo, jefatura..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && fetchUsuarios()}
@@ -195,7 +184,7 @@ function App() {
             <table className="w-full text-left">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="px-6 py-3 text-center">
+                  <th className="px-6 py-3 text-center w-10">
                     <input 
                       type="checkbox" 
                       onChange={toggleSeleccionarTodo}
@@ -204,6 +193,8 @@ function App() {
                   </th>
                   <th className="px-6 py-3">Nombre</th>
                   <th className="px-6 py-3">Cumpleaños</th>
+                  <th className="px-6 py-3">Cargo</th>
+                  <th className="px-6 py-3">Jefatura</th>
                   <th className="px-6 py-3">Email</th>
                   <th className="px-6 py-3">Gerencia</th>
                 </tr>
@@ -214,7 +205,7 @@ function App() {
                   const estaSeleccionado = seleccionados.some(s => s.email === u.email);
 
                   return (
-                    <tr key={i} className={estaSeleccionado ? 'bg-blue-50' : ''}>
+                    <tr key={u.userId} className={estaSeleccionado ? 'bg-blue-50' : ''}>
                       <td className="px-6 py-4 text-center">
                         <input 
                           type="checkbox" 
@@ -223,10 +214,48 @@ function App() {
                           onChange={() => toggleSeleccion(u)}
                         />
                       </td>
-                      <td className="px-6 py-4 font-medium">{u.nombre} {u.apellido}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{u.cumpleanos || '-'}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{u.email}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{u.gerencia}</td>
+                      
+                      {/* NOMBRE */}
+                      <td className="px-6 py-4 font-medium whitespace-nowrap">
+                        {u.nombre} {u.apellido}
+                      </td>
+                      
+                      {/* CUMPLEAÑOS */}
+                      <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                            <Cake className="w-4 h-4 text-blue-500" />
+                            {u.cumpleanos || '-'}
+                        </div>
+                      </td>
+
+                      {/* CARGO (NUEVO) */}
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                            <Briefcase className="w-4 h-4 text-gray-400" />
+                            {u.cargo || 'Colaborador'}
+                        </div>
+                      </td>
+
+                      {/* JEFATURA (NUEVO) */}
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                            <UserCircle className="w-4 h-4 text-gray-400" />
+                            {u.jefe_directo?.nombre_completo || '-'}
+                        </div>
+                      </td>
+
+                      {/* EMAIL */}
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {u.email}
+                      </td>
+
+                      {/* GERENCIA */}
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                            <Building2 className="w-4 h-4 text-gray-400" />
+                            {u.gerencia_info?.nombre || '-'}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
